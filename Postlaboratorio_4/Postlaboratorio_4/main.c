@@ -27,35 +27,13 @@ void	setup();
 void	INIT_PIN_CHANGE();
 void	INIT_TMR0();
 void	INIT_ADC();
-void	COMPARADOR();
 //main
 int main(void)
 {
-	
 	setup();
 	
 	while (1) {
-		PORTB = contador;  // Actualiza PORTB con el valor del contador
-		//display1= 0x3f;
-		//display2=0x06;
-
-		if (contador & (1 << 6) ){
-			PORTC|=(1<<PORTC0);
-		}
-		else{
-			PORTC&=~(1<<PORTC0);
-		}
-		
-		if (contador & (1 << 7)){
-			PORTC|=(1<<PORTC1);
-		}
-		
-		if (contador | ~(1 << 7)){
-			PORTC&=~(1<<PORTC1);
-		}
-		
 	}
-	
 }
 
 void setup()
@@ -77,31 +55,16 @@ void setup()
 	PORTC|=(1<<PORTC2)|(1<<PORTC3);		//Pull up activado
 	
 	DDRC |=((1 << DDC0) | (1 << DDC1)| (1 << DDC4) | (1 << DDC5));	//Configurar el bit 0 y 1 del puerto C como salida
-	PORTC|=~(1<<PORTC4)|(1<<PORTC5);		//Inicialmente apagado
+	PORTC&=~((1<<PORTC4)|(1<<PORTC5));		//Inicialmente apagado
 	UCSR0B = 0x00; // Inicialmente apagado
 	INIT_PIN_CHANGE();
 	INIT_ADC();
 	ADCSRA |= (1 << ADSC);
-	COMPARADOR();
+	
 	sei();				//Encender interrupciones
 }
 
-//****************SUBRUTINA**************//
-void COMPARADOR() {
-
-	
-	if (contador == 0X04){
-		PORTD |= (1 << PORTD7) ;
-	}
-	
-	else{
-		PORTD &= ~(1 << PORTD7);
-	}
-	
-}
-
-
-
+//****************SUBRUTINAS**************//
 
 void INIT_PIN_CHANGE()
 {//Habilitar interrupciones de pin change
@@ -113,10 +76,9 @@ void INIT_PIN_CHANGE()
 void INIT_TMR0()
 {
 	TCCR0A =0;	//Configurarlo en modo normal
-	TCCR0B |= (1<< CS01) | (1<<CS00) ;	//configurar un prescaler de 64
-	TCNT0 =0Xf0;	//Desborde cada 5 ms
+	TCCR0B |= (1<< CS01)  ;	//configurar un prescaler de 8
+	TCNT0 =50;	//Desborde cada 1 ms
 	TIMSK0 = (1 << TOIE0);	//Habilitar interrupciones
-	
 }
 
 void	INIT_ADC()
@@ -148,46 +110,58 @@ ISR(PCINT1_vect) {
 	else if (!(estado_actual & (1<<PINC3))){
 		contador--;
 	}
+	PORTB = contador;  // Actualiza PORTB con el valor del contador
+	if (contador & (1 << 6))
+	{
+		PORTC |= (1 << PORTC0);
+	}else{
+		PORTC &= ~(1 << PORTC0);
+	}
+	if (contador & (1 << 7))
+	{
+		PORTC |= (1 << PORTC1);
+	}else{
+		PORTC &= ~(1 << PORTC1);
+	}
 }
 
 ISR(ADC_vect)
-
 {
-	Pbaja= ADCH & 0X0F;
-	P_alta= (ADCH>>4) & 0X0f;
+	uint8_t temporal = ADCH;
+	Pbaja= temporal & 0x0F;
+	P_alta= (temporal>>4) & 0x0F;
 	display2 =DISPLAY[Pbaja];
 	display1 =DISPLAY[P_alta];
-	//display1 = 0x6D;
-
 	
+	if (temporal > contador)
+	{
+		PORTD |= (1 << PORTD7);
+	}else{
+		PORTD &= ~(1 << PORTD7);
+	}
 
 	ADCSRA |= (1 << ADSC);
-	
 }
 
 ISR(TIMER0_OVF_vect)
 {
-	PORTC &=~((1<<PORTC4)|(1<<PORTC5));	//apagar todos los displays
-	MULTIPLEX ++;			//incrementar multiplex
-	
+	TCNT0 =50;	//Desborde cada 5 ms
+	PORTC &= ~((1<<PORTC4)|(1<<PORTC5));	//apagar todos los displays
+	MULTIPLEX++;			//incrementar multiplex
+	MULTIPLEX = MULTIPLEX % 2;
+	PORTD = (PORTD & 0b10000000);
 	switch (MULTIPLEX){
+		case 0:
+			//display1 = DISPLAY[4];
+			PORTD = PORTD | display1;
+			PORTC |=(1 << PORTC4);
+			break;
 		case 1:
-		PORTD = (PORTD & (1 << PORTD7)) | (display1 & 0x7F);
-;
-		PORTC |=(1 << PORTC4);
-		break;
-		
-		case 2:
-		PORTD = (PORTD & (1 << PORTD7)) | (display2 & 0x7F);
-;
-		PORTC |=(1<< PORTC5);
-		break;
-		
-		case 3:
-		MULTIPLEX=0;
-		break;
-		
+			//display2 = DISPLAY[3];
+			PORTD = PORTD | display2;
+			PORTC |=(1 << PORTC5);
+			break;		
 		default:
-		break;
+			break;
 	}
 }
